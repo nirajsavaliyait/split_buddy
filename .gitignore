@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+ENV/
+.env
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Virtual environments
+venv/
+ENV/
+.env
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Secrets
+.env
+*.secret
+
+# Node
+node_modules/
+
+# Others
+*.bak
+*.swp
+*.swo
+
+# Ignore test coverage
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+test-results/
