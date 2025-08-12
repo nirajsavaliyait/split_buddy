@@ -1,15 +1,25 @@
-
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 
 ## Send an email using SMTP credentials from environment variables
+# Be tolerant when SMTP is not configured: do a no-op instead of crashing app startup.
 def send_email(to_email, subject, body):
     smtp_server = os.getenv("SMTP_SERVER")
-    smtp_port = int(os.getenv("SMTP_PORT"))
+    smtp_port_str = os.getenv("SMTP_PORT")
     smtp_username = os.getenv("SMTP_USERNAME")
     smtp_password = os.getenv("SMTP_PASSWORD")
+
+    # If SMTP is not configured, log and return without raising
+    if not smtp_server or not smtp_username or not smtp_password:
+        print("SMTP not configured; skipping email send.")
+        return
+
+    try:
+        smtp_port = int(smtp_port_str) if smtp_port_str else 587
+    except Exception:
+        smtp_port = 587
 
     msg = MIMEMultipart()
     msg["From"] = smtp_username
@@ -25,8 +35,9 @@ def send_email(to_email, subject, body):
         server.quit()
         print("Email sent successfully")
     except Exception as e:
+        # Log and continue; do not break request flow in non-critical path
         print(f"Error sending email: {e}")
-        raise
+        return
 
 
 # import smtplib
