@@ -49,10 +49,6 @@ def signin(user: UserLogin):
     )
     return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
 
-# Alias for common naming
-@router.post("/login", summary="Sign in (alias of /signin)", tags=["Auth"])
-def login(user: UserLogin):
-    return signin(user)
 
 @router.post("/token/refresh", summary="Exchange refresh token for new access token", tags=["Auth"])
 async def refresh_token_endpoint(request: Request):
