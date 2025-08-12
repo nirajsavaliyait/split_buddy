@@ -5,7 +5,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from app.routes import router as authz_router
 
-app = FastAPI()
+app = FastAPI(
+    title="SplitBuddy Authorisation API",
+    version="1.0.0",
+    description="Read-only authorization helpers (JWT verify, group/expense checks)",
+)
 security = HTTPBearer()
 
 # CORS
