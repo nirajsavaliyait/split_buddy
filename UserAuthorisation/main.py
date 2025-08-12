@@ -1,11 +1,23 @@
 from fastapi import FastAPI, Depends, HTTPException
+import os
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
-import os
 from app.routes import router as authz_router
 
 app = FastAPI()
 security = HTTPBearer()
+
+# CORS
+_origins = os.getenv("FRONTEND_ORIGINS", "*")
+origins = [o.strip() for o in _origins.split(',') if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins if origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 JWT_SECRET = os.getenv("JWT_SECRET", "mysecret")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -30,3 +42,7 @@ def root():
     return {"msg": "Authorization microservice running on port 8002"}
 
 app.include_router(authz_router)
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

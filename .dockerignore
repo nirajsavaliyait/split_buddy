@@ -11,3 +11,13 @@ Thumbs.db
 *.log
 node_modules/
 db/
+
+# Secrets and env files (do not send to Docker build context)
+.env
+**/.env
+*.env
+*.env.*
+.env.local
+.env.development
+.env.production
+keys.txt

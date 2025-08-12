@@ -10,4 +10,5 @@ ALGORITHM = os.getenv("ALGORITHM")
 NGROK_URL = os.getenv("NGROK_URL")
 REFRESH_TOKEN_SECRET = os.getenv("REFRESH_TOKEN_SECRET", JWT_SECRET)
 PROFILE_PIC_BUCKET = os.getenv("PROFILE_PIC_BUCKET", "avatars")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+# Accept both env names for the admin/service key; prefer SUPABASE_SECRET_KEY
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_KEY")

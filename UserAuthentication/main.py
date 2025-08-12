@@ -1,10 +1,23 @@
 from fastapi import FastAPI
+import os
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
 
 
 app = FastAPI()
+
+# CORS: allow only configured frontend origins (comma-separated). Use * only for local dev.
+_origins = os.getenv("FRONTEND_ORIGINS", "*")
+origins = [o.strip() for o in _origins.split(',') if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins if origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(auth.router)
 app.mount("/form", StaticFiles(directory="app/form"), name="form")
@@ -40,3 +53,7 @@ app.openapi = custom_openapi
 @app.get("/")
 def read_root():
     return {"msg": "Authentication microservice running on port 8001"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

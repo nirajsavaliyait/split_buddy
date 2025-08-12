@@ -37,7 +37,7 @@ def signup(user: UserCreate):
 def signin(user: UserLogin):
     user_data = authenticate_user(user)
     access_token = jwt.encode(
-        {"sub": user_data["id"], "email": user_data["email"], "exp": datetime.utcnow() + timedelta(minutes=60)},
+        {"sub": user_data["id"], "email": user_data["email"], "exp": datetime.utcnow() + timedelta(minutes=30)},
         JWT_SECRET,
         algorithm="HS256"
     )
