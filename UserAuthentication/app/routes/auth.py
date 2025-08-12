@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 import base64
 import io
 import uuid
-from PIL import Image, ExifTags
+# Defer heavy imports to runtime to avoid startup crashes in minimal images
+# from PIL import Image, ExifTags
 import json
 
 router = APIRouter()
@@ -182,6 +183,11 @@ async def upload_profile_picture(
     image_base64: str | None = Form(default=None),
     user=Depends(get_current_user)
 ):
+    # Import Pillow lazily to avoid import-time failures breaking app startup
+    try:
+        from PIL import Image, ExifTags  # type: ignore
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing unavailable: {e}")
     user_id = user["sub"]
     content: bytes | None = None
     ext = "png"
