@@ -78,6 +78,27 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 - GET /reports/groups/{group_id}/summary
 - GET /reports/groups/{group_id}/summary.csv
 
+## Deploying to Railway
+- For each service folder (UserAuthentication, UserAuthorisation, UserGroupManagement, ExpenseManagement):
+  - Create a new Railway service from your GitHub repo, set the root to that service folder.
+  - Railway will detect the Dockerfile.
+  - Set environment variables from the corresponding .env.example.
+  - Expose the service port (8001–8004). Railway provides HTTPS and a subdomain automatically.
+- Custom domain + SSL:
+  - Add a custom domain in Railway for each service you want public; Railway issues SSL via Let’s Encrypt.
+  - Or front services with an API gateway or reverse proxy under one domain.
+
+## Push notifications (FCM)
+- For mobile/web clients:
+  - Create a Firebase project, enable Cloud Messaging, download client config (google-services.json or web SDK keys).
+  - Store FCM server key as a secret (e.g., FCM_SERVER_KEY) in the service that will send notifications.
+  - Add an endpoint to register device tokens and send notifications (future work).
+
+## Frontend guidance
+- Start with a simple web UI (React + Vite) or mobile (Flutter/React Native).
+- Connect to these APIs via HTTPS; store JWT in memory and refresh as needed.
+- Keep UI components modular so future features slot in without redesign.
+
 ## Notes
 - JWT: Authorization: Bearer <token> across services.
 - Supabase: local authz checks in 8003/8004; 8002 provides helper checks.
