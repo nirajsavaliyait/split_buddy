@@ -1,13 +1,19 @@
+"""Business logic for the Authentication service.
+
+Includes user creation, login, profile read/update, email verification,
+password reset request/confirm. Uses Supabase as the data store.
+"""
+
 # This logic imports utilities and models
 from app.utils import supabase, hash_password, verify_password
-from app.models import UserCreate, UserLogin, EmailVerification, PasswordResetRequest, PasswordReset
+from app.models import UserCreate, UserLogin, EmailVerification, PasswordResetRequest, PasswordReset, UserProfileUpdate
 from fastapi import HTTPException
 import uuid
 import datetime
 import pytz
 from dateutil.parser import parse as parse_datetime
 
-# This logic creates a new user and sends verification email
+## Create a new user and send verification email
 def create_user(user: UserCreate):
     existing = supabase.table("users").select("id").eq("email", user.email).execute()
     if existing.data:
@@ -18,12 +24,14 @@ def create_user(user: UserCreate):
         "email": user.email,
         "password_hash": hashed,
         "is_verified": False,
-        "verification_token": verification_token
+        "verification_token": verification_token,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
     }).execute()
     # TODO: Send verification email with token
     return {"msg": "User created successfully. Please verify your email."}
 
-# This logic authenticates users
+## Authenticate user credentials and check verification
 def authenticate_user(user: UserLogin):
     result = supabase.table("users").select("*").eq("email", user.email).execute()
     if not result.data:
@@ -36,7 +44,51 @@ def authenticate_user(user: UserLogin):
     # TODO: Detect new device/IP and send notification
     return user_data
 
-# This logic verifies user email
+## Fetch user profile (selected fields)
+def get_user_profile(user_id: str):
+    res = supabase.table("users").select("id, email, first_name, last_name, profile_picture, is_verified").eq("id", user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    return res.data[0]
+
+## Update user profile fields
+def update_user_profile(user_id: str, payload: UserProfileUpdate):
+    update_data = {}
+    # Normalize helper: treat empty strings as "no change"
+    def normalize(value: str | None) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            v = value.strip()
+            # Treat empty strings and Swagger placeholders as no change
+            if v == "":
+                return None
+            if v.lower() == "string":
+                return None
+            if v.lower() == "user@example.com":
+                return None
+        return value
+
+    first_name = normalize(payload.first_name)
+    last_name = normalize(payload.last_name)
+    email = normalize(getattr(payload, "email", None))
+
+    if first_name is not None:
+        update_data["first_name"] = first_name
+    if last_name is not None:
+        update_data["last_name"] = last_name
+    if email is not None:
+        # Check if email is taken by another user
+        exists = supabase.table("users").select("id").eq("email", email).neq("id", user_id).execute()
+        if exists.data:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        update_data["email"] = email
+    if not update_data:
+        return {"msg": "Nothing to update"}
+    supabase.table("users").update(update_data).eq("id", user_id).execute()
+    return {"msg": "Profile updated"}
+
+## Verify user email using token
 def verify_email(token: str):
     result = supabase.table("users").select("*").eq("verification_token", token).execute()
     if not result.data:

@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import os
+from app.routes import router as authz_router
 
 app = FastAPI()
 security = HTTPBearer()
@@ -26,4 +27,6 @@ def private_route(payload: dict = Depends(verify_jwt)):
 
 @app.get("/")
 def root():
-    return {"msg": "Authorization Service Root"}
+    return {"msg": "Authorization microservice running on port 8002"}
+
+app.include_router(authz_router)
