@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim
 WORKDIR /app
-COPY UserAuthentication/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-COPY UserAuthentication /app
+COPY . /app
 # Do not bake .env into images (use Railway env vars)
 RUN rm -f /app/.env || true
 EXPOSE 8001
