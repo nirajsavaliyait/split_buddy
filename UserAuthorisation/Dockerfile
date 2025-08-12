@@ -5,5 +5,6 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 RUN rm -f /app/.env || true
-EXPOSE 8002
-CMD ["sh", "-lc", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8002}"]
+# Railway sets PORT; expose 8080 for clarity (container binds to $PORT)
+EXPOSE 8080
+CMD ["python", "start.py"]
