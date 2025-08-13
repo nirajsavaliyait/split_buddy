@@ -3,6 +3,7 @@ from app.models import GroupCreate, MemberAdd
 from typing import Optional, List
 from app.services import create_group, add_member
 from app.utils import get_current_user
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -18,12 +19,32 @@ def create_group_endpoint(group: GroupCreate, user=Depends(get_current_user)):
 
 
 # Endpoint to add a member to a group
-@router.post("/group/add-member", summary="Add member to a group", tags=["Members"])
+@router.post("/group/add-member", summary="Add member to a group", tags=["Members"], deprecated=True)
 def add_member_endpoint(member: MemberAdd, user=Depends(get_current_user)):
     # Only the group owner can add members
     from app.authz_utils import ensure_owner_or_403
     ensure_owner_or_403(user["sub"], member.group_id)
     return add_member(member)
+
+
+# Human-friendly: add member via group path
+class MemberAddBody(BaseModel):
+    user_id: str
+    phone_number: Optional[str] = None
+    relationship_tag: Optional[str] = None
+
+
+@router.post("/groups/{group_id}/members", summary="Add a member to this group", tags=["Members"])
+def add_member_friendly(group_id: str, body: MemberAddBody, user=Depends(get_current_user)):
+    from app.authz_utils import ensure_owner_or_403
+    ensure_owner_or_403(user["sub"], group_id)
+    payload = MemberAdd(
+        group_id=group_id,
+        user_id=body.user_id,
+        phone_number=body.phone_number,
+        relationship_tag=body.relationship_tag,
+    )
+    return add_member(payload)
 
 
 
@@ -202,8 +223,20 @@ def list_group_invites(group_id: str, status: Optional[str] = Query(None), user=
         return {"invites": [], "note": "No invite store found. Create a 'group_invites' table to persist invites."}
 
 # List all groups a user belongs to
-@router.get("/groups/mine", summary="List groups I belong to", tags=["Groups"])
+@router.get("/groups/mine", summary="List groups I belong to", tags=["Groups"], deprecated=True)
 def user_groups(user=Depends(get_current_user)):
+    response = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
+    group_ids = [g["group_id"] for g in response.data] if response.data else []
+    groups = []
+    if group_ids:
+        groups_resp = supabase.table("groups").select("id", "name", "description").in_("id", group_ids).execute()
+        groups = groups_resp.data if groups_resp.data else []
+    return {"groups": groups}
+
+
+# Human-friendly alias
+@router.get("/groups", summary="List my groups", tags=["Groups"])
+def user_groups_alias(user=Depends(get_current_user)):
     response = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
     group_ids = [g["group_id"] for g in response.data] if response.data else []
     groups = []
@@ -303,9 +336,22 @@ def search_groups_members(
     return result
 
 # Pagination & filtering for group list
-@router.get("/group/list-paged", summary="List my groups (paged)", tags=["Groups"])
+@router.get("/group/list-paged", summary="List my groups (paged)", tags=["Groups"], deprecated=True)
 def list_groups_paged(user=Depends(get_current_user), skip: int = Query(0), limit: int = Query(10)):
     # Return paged groups the user is a member of
+    gm = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
+    group_ids = [g["group_id"] for g in (gm.data or [])]
+    if not group_ids:
+        return {"groups": []}
+    g_resp = supabase.table("groups").select("id", "name", "description").in_("id", group_ids).execute()
+    all_groups = g_resp.data or []
+    groups = all_groups[skip: skip + limit]
+    return {"groups": groups}
+
+
+# Human-friendly alias
+@router.get("/groups/paged", summary="List my groups (paged)", tags=["Groups"])
+def list_groups_paged_alias(user=Depends(get_current_user), skip: int = Query(0), limit: int = Query(10)):
     gm = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
     group_ids = [g["group_id"] for g in (gm.data or [])]
     if not group_ids:
@@ -337,7 +383,7 @@ def notify_user(group_id: str, user_id: str, message: str, email: str = None, ph
         raise HTTPException(status_code=500, detail="; ".join(errors))
     return {"msg": f"Notification sent to user {user_id} in group {group_id}: {message}"}
 
-@router.get("/group/list", summary="List all groups I belong to", tags=["Groups"])
+@router.get("/group/list", summary="List all groups I belong to", tags=["Groups"], deprecated=True)
 def list_groups(user=Depends(get_current_user)):
     # Return all groups the current user is a member of (not just created)
     gm = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
@@ -389,3 +435,72 @@ def remove_member(group_id: str, user_id: str, user=Depends(get_current_user)):
     if not response.data:
         raise HTTPException(status_code=400, detail="Failed to remove member")
     return {"msg": f"Removed user {user_id} from group {group_id}"}
+
+
+# Group metadata (owner/member visibility)
+@router.get("/groups/{group_id}/meta", summary="Get group metadata (owner/member only)", tags=["Groups"], deprecated=True)
+def group_meta(group_id: str, user=Depends(get_current_user)):
+    # Allow owner or members to view metadata
+    from app.authz_utils import is_owner, is_member
+    if not (is_owner(user["sub"], group_id) or is_member(user["sub"], group_id)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    res = supabase.table("groups").select("id, name, description, created_by").eq("id", group_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return res.data[0]
+
+
+# Human-friendly alias
+@router.get("/groups/{group_id}/info", summary="Get group info", tags=["Groups"])
+def group_info(group_id: str, user=Depends(get_current_user)):
+    # Allow owner or members to view metadata
+    from app.authz_utils import is_owner, is_member
+    if not (is_owner(user["sub"], group_id) or is_member(user["sub"], group_id)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    res = supabase.table("groups").select("id, name, description, created_by").eq("id", group_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return res.data[0]
+
+
+# Backfill: ensure creator is also a member (owner)
+@router.post("/groups/{group_id}/backfill-owner-membership", summary="Ensure owner is a member of the group", tags=["Groups"], deprecated=True)
+def backfill_owner_membership(group_id: str, user=Depends(get_current_user)):
+    from app.authz_utils import is_owner
+    # Only the owner can invoke this
+    if not is_owner(user["sub"], group_id):
+        raise HTTPException(status_code=403, detail="Only group owner can perform this action")
+    # Check if already a member
+    existing = supabase.table("group_members").select("user_id").eq("group_id", group_id).eq("user_id", user["sub"]).execute()
+    if existing.data:
+        return {"msg": "Owner already a member", "changed": False}
+    # Insert owner membership
+    try:
+        supabase.table("group_members").insert({
+            "group_id": group_id,
+            "user_id": user["sub"],
+            "relationship_tag": "owner"
+        }).execute()
+        return {"msg": "Owner added to group_members", "changed": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to add owner as member: {e}")
+
+
+# Human-friendly alias
+@router.post("/groups/{group_id}/owner/join", summary="Owner: join group as member", tags=["Groups"])
+def owner_join_group(group_id: str, user=Depends(get_current_user)):
+    from app.authz_utils import is_owner
+    if not is_owner(user["sub"], group_id):
+        raise HTTPException(status_code=403, detail="Only group owner can perform this action")
+    existing = supabase.table("group_members").select("user_id").eq("group_id", group_id).eq("user_id", user["sub"]).execute()
+    if existing.data:
+        return {"msg": "Owner already a member", "changed": False}
+    try:
+        supabase.table("group_members").insert({
+            "group_id": group_id,
+            "user_id": user["sub"],
+            "relationship_tag": "owner"
+        }).execute()
+        return {"msg": "Owner added to group_members", "changed": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to add owner as member: {e}")
