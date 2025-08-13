@@ -3,7 +3,7 @@ from app.models import UserCreate, UserLogin, PasswordResetRequest, PasswordRese
 from app.services import create_user, authenticate_user, verify_email, request_password_reset, reset_password, get_user_profile, update_user_profile
 from app.utils import supabase, supabase_admin
 from app.email_utils import send_email
-from app.config import JWT_SECRET, NGROK_URL, REFRESH_TOKEN_SECRET, PROFILE_PIC_BUCKET, SUPABASE_URL, FRONTEND_RESET_URL
+from app.config import JWT_SECRET, REFRESH_TOKEN_SECRET, PROFILE_PIC_BUCKET, SUPABASE_URL, FRONTEND_RESET_URL, FRONTEND_VERIFY_URL
 import jwt
 from datetime import datetime, timedelta
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -29,9 +29,15 @@ def signup(user: UserCreate):
     except Exception as e:
         print(f"Error fetching verification token: {e}")
     token = user_record.data[0]["verification_token"] if user_record and user_record.data else None
-    verify_link = f"{NGROK_URL}/verify-email?token={token}" if token else "Token not found"
-    # Send verification email with link
-    send_email(user.email, "Verify your email", f"Click this link to verify your email: {verify_link}")
+    # Prefer a frontend verification URL if provided
+    if token:
+        if FRONTEND_VERIFY_URL:
+            verify_link = f"{FRONTEND_VERIFY_URL}?token={token}"
+            send_email(user.email, "Verify your email", f"Click this link to verify your email: {verify_link}")
+        else:
+            send_email(user.email, "Verify your email", f"Use this code to verify in the app: {token}")
+    else:
+        send_email(user.email, "Verify your email", "Verification token not found. Please try again.")
     return result
 
 @router.post("/signin", summary="Sign in and get access/refresh tokens", tags=["Auth"])
