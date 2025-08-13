@@ -6,7 +6,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import expense
 
-app = FastAPI()
+app = FastAPI(
+    title="SplitBuddy Expense Management API",
+    description="Create expenses, preview/commit splits, balances, settlements, attachments, and reports.",
+)
 
 # CORS
 import os
@@ -23,7 +26,7 @@ app.include_router(expense.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "ExpenseManagement microservice running on port 8004"}
+    return {"message": "ExpenseManagement microservice running"}
 
 @app.get("/health")
 def health():

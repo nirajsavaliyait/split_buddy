@@ -7,7 +7,10 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 from fastapi import FastAPI
 from app.routes import group
 
-app = FastAPI()
+app = FastAPI(
+    title="SplitBuddy Group Management API",
+    description="Endpoints for managing groups, memberships, and invites.",
+)
 
 # CORS
 import os
@@ -24,7 +27,7 @@ app.include_router(group.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "UserGroupManagement microservice running on port 8003"}
+    return {"message": "UserGroupManagement microservice running"}
 
 @app.get("/health")
 def health():
