@@ -351,8 +351,16 @@ def list_groups(user=Depends(get_current_user)):
 # List members of a group
 @router.get("/groups/{group_id}/members", summary="List members of a group", tags=["Members"])
 def list_members(group_id: str, user=Depends(get_current_user)):
-    # Only members can list members
-    ensure_member_or_403(user["sub"], group_id)
+    # Allow members or the group owner to list members
+    try:
+        ensure_member_or_403(user["sub"], group_id)
+    except HTTPException as e:
+        if e.status_code != 403:
+            raise
+        # Not a member; allow if owner
+        from app.authz_utils import is_owner
+        if not is_owner(user["sub"], group_id):
+            raise
     response = supabase.table("group_members").select("group_id, user_id, phone_number, relationship_tag").eq("group_id", group_id).execute()
     enriched = _enrich_members(response.data or [])
     # Remove group_id in this endpoint to keep response same as before

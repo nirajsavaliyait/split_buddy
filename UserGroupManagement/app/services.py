@@ -7,12 +7,25 @@ def create_group(group: GroupCreate, created_by: str):
     # Create a new group in the database
     group_id = str(uuid.uuid4())
     supabase = get_supabase_client()
+    # 1) Create the group row
     supabase.table("groups").insert({
         "id": group_id,
         "name": group.name,
         "description": group.description,
         "created_by": created_by
     }).execute()
+    # 2) Ensure the creator is also a member of the group
+    # This keeps authorization consistent (owner can access member-scoped endpoints)
+    try:
+        supabase.table("group_members").insert({
+            "group_id": group_id,
+            "user_id": created_by,
+            # Optional defaults; adjust if you want a specific owner tag
+            "relationship_tag": "owner"
+        }).execute()
+    except Exception:
+        # If a constraint prevents duplicates or table missing, ignore
+        pass
     return {"group_id": group_id, "msg": "Group created successfully"}
 
 def add_member(member: MemberAdd):
