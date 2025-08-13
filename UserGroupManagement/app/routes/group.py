@@ -6,6 +6,10 @@ from app.utils import get_current_user
 
 router = APIRouter()
 
+@router.get("/auth/introspect", summary="Return the JWT payload for debugging", tags=["Auth"])
+def introspect(user=Depends(get_current_user)):
+    # Helps verify the token/secret are aligned across services
+    return {"user": user}
 
 # Endpoint to create a new group
 @router.post("/groups", summary="Create a group", tags=["Groups"])
@@ -16,6 +20,9 @@ def create_group_endpoint(group: GroupCreate, user=Depends(get_current_user)):
 # Endpoint to add a member to a group
 @router.post("/group/add-member", summary="Add member to a group", tags=["Members"])
 def add_member_endpoint(member: MemberAdd, user=Depends(get_current_user)):
+    # Only the group owner can add members
+    from app.authz_utils import ensure_owner_or_403
+    ensure_owner_or_403(user["sub"], member.group_id)
     return add_member(member)
 
 

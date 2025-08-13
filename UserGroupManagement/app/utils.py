@@ -14,9 +14,8 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 def get_supabase_client():
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
-    ALGORITHM = os.getenv("ALGORITHM")
     if not supabase_url or not supabase_key:
-        raise Exception("SUPABASE_URL and SUPABASE_KEY must be set in .env")
+        raise Exception("SUPABASE_URL and SUPABASE_KEY must be set")
     return create_client(supabase_url, supabase_key)
 
 
@@ -24,7 +23,11 @@ def get_supabase_client():
 supabase = get_supabase_client()
 
 # JWT auth dependency (shared by route handlers)
-JWT_SECRET = os.getenv("JWT_SECRET", "mysecret")
+# Use the same default secret as the Auth service so tokens validate out-of-the-box.
+JWT_SECRET = os.getenv(
+    "JWT_SECRET",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkbnV1b3loY3NsdXZleG9sbW9uIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDM3Njk1MywiZXhwIjoyMDY5OTUyOTUzfQ._ALcDQEcl6vj_zGQ9G9UxF9I7xn0ZfBTtulqtelxZD8",
+)
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 security = HTTPBearer()
 
@@ -36,4 +39,4 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token: ensure JWT_SECRET and algorithm match Auth service")
