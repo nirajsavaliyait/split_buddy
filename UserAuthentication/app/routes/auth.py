@@ -3,11 +3,11 @@ from app.models import UserCreate, UserLogin, PasswordResetRequest, PasswordRese
 from app.services import create_user, authenticate_user, verify_email, request_password_reset, reset_password, get_user_profile, update_user_profile
 from app.utils import supabase, supabase_admin
 from app.email_utils import send_email
-from app.config import JWT_SECRET, NGROK_URL, REFRESH_TOKEN_SECRET, PROFILE_PIC_BUCKET, SUPABASE_URL
+from app.config import JWT_SECRET, NGROK_URL, REFRESH_TOKEN_SECRET, PROFILE_PIC_BUCKET, SUPABASE_URL, FRONTEND_RESET_URL
 import jwt
 from datetime import datetime, timedelta
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import Response
 import base64
 import io
 import uuid
@@ -86,20 +86,15 @@ def verify_email_endpoint(token: str):
 def forgot_password(request: PasswordResetRequest):
     result = request_password_reset(request.email)
     reset_token = result["token"]
-    reset_link = f"{NGROK_URL}/reset-password-form?token={reset_token}"
-
-    email_body = f"""
-    Hi,
-
-    We received a request to reset your password.
-    Click the link below to reset it:
-
-    {reset_link}
-
-    If you didn’t request this, please ignore this email.
-
-    Thanks!
-    """
+    # Prefer linking to the frontend's reset page if configured; otherwise include the token.
+    reset_link = None
+    if FRONTEND_RESET_URL:
+        reset_link = f"{FRONTEND_RESET_URL}?token={reset_token}"
+    email_body = (
+        f"Hi,\n\nWe received a request to reset your password.\n"
+        + (f"Click the link to reset: {reset_link}\n\n" if reset_link else f"Use this code in the app to reset: {reset_token}\n\n")
+        + "If you didn’t request this, please ignore this email.\n\nThanks!"
+    )
 
     send_email(request.email, "Password Reset", email_body)
     return {"msg": "Password reset email sent"}
@@ -109,9 +104,7 @@ def forgot_password(request: PasswordResetRequest):
 def reset_password_endpoint(reset: PasswordReset):
     return reset_password(reset.token, reset.new_password)
 
-@router.get("/reset-password-form", response_class=HTMLResponse, summary="Password reset form (HTML)", tags=["Auth"])
-def serve_reset_form(request: Request):
-    return FileResponse("app/form/reset_password.html")
+## Removed HTML reset form endpoint; frontend will provide the UI
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):

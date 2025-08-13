@@ -2,7 +2,6 @@ from fastapi import FastAPI
 import os
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth
-from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
 
 
@@ -20,7 +19,6 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.mount("/form", StaticFiles(directory="app/form"), name="form")
 
 def custom_openapi():
     # Generate OpenAPI schema and remove any deprecated operations so they don't appear in Swagger
