@@ -27,7 +27,7 @@ app.include_router(group.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "UserGroupManagement microservice running"}
+    return {"message":"UserGroupManagement microservice running on port 8003"}
 
 @app.get("/health")
 def health():

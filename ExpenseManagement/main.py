@@ -26,7 +26,7 @@ app.include_router(expense.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "ExpenseManagement microservice running"}
+    return {"message":"UserGroupManagement microservice running on port 8004"}
 
 @app.get("/health")
 def health():
