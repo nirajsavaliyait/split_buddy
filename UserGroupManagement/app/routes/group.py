@@ -4,6 +4,7 @@ from typing import Optional, List
 from app.services import create_group, add_member
 from app.utils import get_current_user
 from pydantic import BaseModel
+import re
 
 router = APIRouter()
 
@@ -18,13 +19,7 @@ def create_group_endpoint(group: GroupCreate, user=Depends(get_current_user)):
     return create_group(group, created_by=user["sub"])
 
 
-# Endpoint to add a member to a group
-@router.post("/group/add-member", summary="Add member to a group", tags=["Members"], deprecated=True)
-def add_member_endpoint(member: MemberAdd, user=Depends(get_current_user)):
-    # Only the group owner can add members
-    from app.authz_utils import ensure_owner_or_403
-    ensure_owner_or_403(user["sub"], member.group_id)
-    return add_member(member)
+# (Legacy /group/add-member removed)
 
 
 # Human-friendly: add member via group path
@@ -42,6 +37,102 @@ def add_member_friendly(group_id: str, body: MemberAddBody, user=Depends(get_cur
         group_id=group_id,
         user_id=body.user_id,
         phone_number=body.phone_number,
+        relationship_tag=body.relationship_tag,
+    )
+    return add_member(payload)
+
+
+# --- Contacts & phone-based membership ---
+class ContactItem(BaseModel):
+    name: Optional[str] = None
+    phone: str
+
+
+def _digits10(phone: str) -> str:
+    """Return only the 10-digit local number if valid; else ''."""
+    digits = re.sub(r"[^0-9]", "", phone or "")
+    if len(digits) == 10:
+        return digits
+    # Handle +91XXXXXXXXXX or 91XXXXXXXXXX
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits[-10:]
+    return ""
+
+
+@router.post("/contacts/import", summary="Upload contact phone list (10-digit only)", tags=["Contacts"])
+def import_contacts(items: List[ContactItem], user=Depends(get_current_user)):
+    from app.utils import supabase
+    rows = []
+    now = datetime.datetime.utcnow().isoformat()
+    for it in items:
+        phone10 = _digits10(it.phone)
+        if not phone10:
+            continue
+        rows.append({
+            "id": str(uuid.uuid4()),
+            "owner_id": user["sub"],
+            "name": (it.name or "").strip(),
+            "phone": phone10,
+            "created_at": now,
+        })
+    if rows:
+        try:
+            supabase.table("contact_imports").insert(rows).execute()
+        except Exception:
+            # table may not exist; ignore
+            pass
+    return {"count": len(rows)}
+
+
+@router.get("/users/lookup", summary="Find user by phone", tags=["Contacts"])
+def lookup_user_by_phone(phone: str, user=Depends(get_current_user)):
+    from app.utils import supabase
+    phone10 = _digits10(phone)
+    if not phone10:
+        raise HTTPException(status_code=400, detail="Invalid phone (expect 10 digits)")
+    try:
+        # Try exact 10-digit first, then +91 variant
+        res = supabase.table("users").select("id, first_name, last_name, email, phone").eq("phone", phone10).execute()
+        if res.data:
+            return res.data[0]
+        res2 = supabase.table("users").select("id, first_name, last_name, email, phone").eq("phone", "+91" + phone10).execute()
+        return res2.data[0] if res2.data else None
+    except Exception:
+        raise HTTPException(status_code=500, detail="Phone lookup unavailable (ensure 'phone' column on users)")
+
+
+class MemberAddByPhoneBody(BaseModel):
+    phone: str
+    relationship_tag: Optional[str] = None
+
+
+@router.post("/groups/{group_id}/members/by-phone", summary="Add member by phone number", tags=["Members"])
+def add_member_by_phone(group_id: str, body: MemberAddByPhoneBody, user=Depends(get_current_user)):
+    from app.utils import supabase
+    ensure_owner_or_403(user["sub"], group_id)
+    phone10 = _digits10(body.phone)
+    if not phone10:
+        raise HTTPException(status_code=400, detail="Invalid phone (expect 10 digits)")
+    # Find user by phone
+    try:
+        # Try 10-digit then +91 variant
+        res = supabase.table("users").select("id").eq("phone", phone10).execute()
+        if res.data:
+            target_id = res.data[0]["id"]
+        else:
+            res2 = supabase.table("users").select("id").eq("phone", "+91" + phone10).execute()
+            if not res2.data:
+                raise HTTPException(status_code=404, detail="No user with that phone")
+            target_id = res2.data[0]["id"]
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Likely missing 'phone' column
+        raise HTTPException(status_code=500, detail="Lookup error: ensure users.phone exists and is populated")
+    payload = MemberAdd(
+        group_id=group_id,
+        user_id=target_id,
+        phone_number=phone10,
         relationship_tag=body.relationship_tag,
     )
     return add_member(payload)
@@ -222,16 +313,7 @@ def list_group_invites(group_id: str, status: Optional[str] = Query(None), user=
         # Table might not exist; return empty list with a hint
         return {"invites": [], "note": "No invite store found. Create a 'group_invites' table to persist invites."}
 
-# List all groups a user belongs to
-@router.get("/groups/mine", summary="List groups I belong to", tags=["Groups"], deprecated=True)
-def user_groups(user=Depends(get_current_user)):
-    response = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
-    group_ids = [g["group_id"] for g in response.data] if response.data else []
-    groups = []
-    if group_ids:
-        groups_resp = supabase.table("groups").select("id", "name", "description").in_("id", group_ids).execute()
-        groups = groups_resp.data if groups_resp.data else []
-    return {"groups": groups}
+"""(Legacy /groups/mine removed)"""
 
 
 # Human-friendly alias
@@ -335,18 +417,7 @@ def search_groups_members(
         result.update({"groups_total": groups_total, "members_total": members_total})
     return result
 
-# Pagination & filtering for group list
-@router.get("/group/list-paged", summary="List my groups (paged)", tags=["Groups"], deprecated=True)
-def list_groups_paged(user=Depends(get_current_user), skip: int = Query(0), limit: int = Query(10)):
-    # Return paged groups the user is a member of
-    gm = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
-    group_ids = [g["group_id"] for g in (gm.data or [])]
-    if not group_ids:
-        return {"groups": []}
-    g_resp = supabase.table("groups").select("id", "name", "description").in_("id", group_ids).execute()
-    all_groups = g_resp.data or []
-    groups = all_groups[skip: skip + limit]
-    return {"groups": groups}
+"""(Legacy /group/list-paged removed)"""
 
 
 # Human-friendly alias
@@ -363,35 +434,30 @@ def list_groups_paged_alias(user=Depends(get_current_user), skip: int = Query(0)
 
 
 
-# Notifications (real email and SMS)
-@router.post("/groups/{group_id}/notify/{user_id}", summary="Notify a user in a group", tags=["Notifications"])
-def notify_user(group_id: str, user_id: str, message: str, email: str = None, phone: str = None, user=Depends(get_current_user)):
+# Notifications (email only)
+@router.post("/groups/{group_id}/notify/{user_id}", summary="Notify a user in a group (email only)", tags=["Notifications"])
+def notify_user(group_id: str, user_id: str, message: str, user=Depends(get_current_user)):
     # Only owner can notify users in group (adjust policy if needed)
     ensure_owner_or_403(user["sub"], group_id)
     # Ensure target user is a member of the group
     m_check = supabase.table("group_members").select("user_id").eq("group_id", group_id).eq("user_id", user_id).execute()
     if not m_check.data:
         raise HTTPException(status_code=404, detail=f"Target user {user_id} is not a member of group {group_id}")
-    errors = []
-    if email:
-        try:
-            send_email(email, "Group Notification", message)
-        except Exception as e:
-            errors.append(f"Email error: {e}")
-    # SMS delivery disabled (Twilio removed)
-    if errors:
-        raise HTTPException(status_code=500, detail="; ".join(errors))
-    return {"msg": f"Notification sent to user {user_id} in group {group_id}: {message}"}
+    # Fetch target email from users table
+    try:
+        target = supabase.table("users").select("email").eq("id", user_id).execute()
+        target_email = (target.data[0]["email"] if target and target.data else None)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lookup error: {e}")
+    if not target_email:
+        raise HTTPException(status_code=404, detail=f"No email found for user {user_id}")
+    try:
+        send_email(target_email, "SplitBuddy Group Notification", message)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email error: {e}")
+    return {"msg": f"Email sent to {target_email} for user {user_id} in group {group_id}"}
 
-@router.get("/group/list", summary="List all groups I belong to", tags=["Groups"], deprecated=True)
-def list_groups(user=Depends(get_current_user)):
-    # Return all groups the current user is a member of (not just created)
-    gm = supabase.table("group_members").select("group_id").eq("user_id", user["sub"]).execute()
-    group_ids = [g["group_id"] for g in (gm.data or [])]
-    if not group_ids:
-        return {"groups": []}
-    groups_resp = supabase.table("groups").select("id", "name", "description").in_("id", group_ids).execute()
-    return {"groups": groups_resp.data or []}
+"""(Legacy /group/list removed)"""
 
 
 # List members of a group
@@ -437,17 +503,7 @@ def remove_member(group_id: str, user_id: str, user=Depends(get_current_user)):
     return {"msg": f"Removed user {user_id} from group {group_id}"}
 
 
-# Group metadata (owner/member visibility)
-@router.get("/groups/{group_id}/meta", summary="Get group metadata (owner/member only)", tags=["Groups"], deprecated=True)
-def group_meta(group_id: str, user=Depends(get_current_user)):
-    # Allow owner or members to view metadata
-    from app.authz_utils import is_owner, is_member
-    if not (is_owner(user["sub"], group_id) or is_member(user["sub"], group_id)):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    res = supabase.table("groups").select("id, name, description, created_by").eq("id", group_id).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Group not found")
-    return res.data[0]
+"""(Legacy /groups/{group_id}/meta removed; use /groups/{group_id}/info)"""
 
 
 # Human-friendly alias
@@ -463,27 +519,7 @@ def group_info(group_id: str, user=Depends(get_current_user)):
     return res.data[0]
 
 
-# Backfill: ensure creator is also a member (owner)
-@router.post("/groups/{group_id}/backfill-owner-membership", summary="Ensure owner is a member of the group", tags=["Groups"], deprecated=True)
-def backfill_owner_membership(group_id: str, user=Depends(get_current_user)):
-    from app.authz_utils import is_owner
-    # Only the owner can invoke this
-    if not is_owner(user["sub"], group_id):
-        raise HTTPException(status_code=403, detail="Only group owner can perform this action")
-    # Check if already a member
-    existing = supabase.table("group_members").select("user_id").eq("group_id", group_id).eq("user_id", user["sub"]).execute()
-    if existing.data:
-        return {"msg": "Owner already a member", "changed": False}
-    # Insert owner membership
-    try:
-        supabase.table("group_members").insert({
-            "group_id": group_id,
-            "user_id": user["sub"],
-            "relationship_tag": "owner"
-        }).execute()
-        return {"msg": "Owner added to group_members", "changed": True}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to add owner as member: {e}")
+"""(Legacy backfill-owner-membership removed; use /groups/{group_id}/owner/join)"""
 
 
 # Human-friendly alias

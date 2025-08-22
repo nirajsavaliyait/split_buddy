@@ -1,6 +1,20 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File, Form, Body
-from app.models import UserCreate, UserLogin, PasswordResetRequest, PasswordReset, UserProfileUpdate
-from app.services import create_user, authenticate_user, verify_email, request_password_reset, reset_password, get_user_profile, update_user_profile
+from app.models import (
+    UserCreate,
+    UserLogin,
+    PasswordResetRequest,
+    PasswordReset,
+    UserProfileUpdate,
+)
+from app.services import (
+    create_user,
+    authenticate_user,
+    verify_email,
+    request_password_reset,
+    reset_password,
+    get_user_profile,
+    update_user_profile,
+)
 from app.utils import supabase, supabase_admin
 from app.email_utils import send_email
 from app.config import JWT_SECRET, REFRESH_TOKEN_SECRET, PROFILE_PIC_BUCKET, SUPABASE_URL, FRONTEND_RESET_URL, FRONTEND_VERIFY_URL
@@ -14,6 +28,7 @@ import uuid
 # Defer heavy imports to runtime to avoid startup crashes in minimal images
 # from PIL import Image, ExifTags
 import json
+from pydantic import BaseModel
 
 router = APIRouter()
 security = HTTPBearer()
@@ -50,6 +65,70 @@ def signin(user: UserLogin):
     )
     refresh_token = jwt.encode(
         {"sub": user_data["id"], "type": "refresh", "exp": datetime.utcnow() + timedelta(days=7)},
+        REFRESH_TOKEN_SECRET,
+        algorithm="HS256"
+    )
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+# ---- Google OAuth (skeleton; wire actual OAuth flow on frontend) ----
+@router.get("/auth/google/login", summary="Start Google OAuth (frontend handles)", tags=["Auth"])
+def google_login_start():
+    """Return a hint/URL for frontend to initiate Google OAuth.
+    In Expo/web, use Google SDK to get id_token and POST to /auth/google/callback.
+    """
+    return {"msg": "Use Google Sign-In on client to obtain id_token and POST to /auth/google/callback"}
+
+
+class GoogleCallbackBody(BaseModel):
+    id_token: str
+
+
+@router.post("/auth/google/callback", summary="Exchange Google id_token for app tokens", tags=["Auth"])
+def google_callback(body: GoogleCallbackBody):
+    """Verify Google id_token (server-side), create/find user, and return JWTs.
+    Note: Implement token verification using google-auth library in production.
+    """
+    id_token_val = body.id_token
+    if not id_token_val:
+        raise HTTPException(status_code=400, detail="id_token required")
+    # TODO: Verify id_token with google.oauth2.id_token.verify_oauth2_token
+    # For now, accept payload with email and sub parsed on client; mock user
+    # Expect frontend to provide email in body for this placeholder
+    email = None
+    try:
+        payload = json.loads(id_token_val)
+        email = payload.get("email")
+        google_sub = payload.get("sub")
+    except Exception:
+        # Not JSON; reject in placeholder
+        raise HTTPException(status_code=400, detail="Invalid id_token placeholder")
+    if not email:
+        raise HTTPException(status_code=400, detail="email missing in id_token placeholder")
+    # Upsert user by email
+    try:
+        existing = supabase.table("users").select("id, is_verified").eq("email", email).execute()
+        if existing.data:
+            user_id = existing.data[0]["id"]
+        else:
+            user_id = str(uuid.uuid4())
+            supabase.table("users").insert({
+                "id": user_id,
+                "email": email,
+                "is_verified": True,
+                "password_hash": None,
+                "first_name": "",
+                "last_name": "",
+            }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upsert user: {e}")
+    access_token = jwt.encode(
+        {"sub": user_id, "email": email, "exp": datetime.utcnow() + timedelta(minutes=60)},
+        JWT_SECRET,
+        algorithm="HS256"
+    )
+    refresh_token = jwt.encode(
+        {"sub": user_id, "type": "refresh", "exp": datetime.utcnow() + timedelta(days=7)},
         REFRESH_TOKEN_SECRET,
         algorithm="HS256"
     )
@@ -389,3 +468,32 @@ def get_profile_picture(user=Depends(get_current_user)):
     return {"url": url, "thumbnail_url": thumb_url}
 
 # (legacy /me routes removed)
+
+# ----- User settings: reminders and theme -----
+class UserSettings(BaseModel):
+    reminder_frequency: str | None = None  # e.g., daily, weekly, monthly
+    reminder_style: str | None = None      # e.g., meme, plain
+    theme: str | None = None               # light | dark | system
+
+
+@router.get("/users/me/settings", summary="Get my settings", tags=["Settings"])
+def get_my_settings(user=Depends(get_current_user)):
+    res = supabase.table("user_settings").select("reminder_frequency, reminder_style, theme").eq("user_id", user["sub"]).execute()
+    if res.data:
+        return res.data[0]
+    return {"reminder_frequency": None, "reminder_style": None, "theme": None}
+
+
+@router.put("/users/me/settings", summary="Update my settings", tags=["Settings"])
+def update_my_settings(body: UserSettings, user=Depends(get_current_user)):
+    data = {k: v for k, v in body.model_dump().items() if v is not None}
+    data["user_id"] = user["sub"]
+    # Upsert-like behavior
+    existing = supabase.table("user_settings").select("user_id").eq("user_id", user["sub"]).execute()
+    if existing.data:
+        supabase.table("user_settings").update(data).eq("user_id", user["sub"]).execute()
+    else:
+        supabase.table("user_settings").insert(data).execute()
+    return {"msg": "Settings saved"}
+
+# (Phone/OTP endpoints removed; email-only auth retained)

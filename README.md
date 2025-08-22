@@ -1,4 +1,4 @@
-# SplitBuddy Backend (MVP)
+# SplitBuddy Backend (Beginner-Friendly)
 
 FastAPI microservices for auth, authorization, groups, and expenses.
 
@@ -9,15 +9,13 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 - 8004 ExpenseManagement (Expenses)
 
 ## Quick run
-- Prereqs: Python 3.11+, a virtualenv, Supabase URL/KEY in each service `.env`.
-- From VS Code terminal, run each service (separate terminals):
+- Requirements: Python 3.11+, virtualenv, Supabase URL/KEY in each service `.env`.
+- In four terminals, run:
   - uvicorn UserAuthentication.main:app --reload --port 8001
   - uvicorn UserAuthorisation.main:app --reload --port 8002
   - uvicorn UserGroupManagement.main:app --reload --port 8003
   - uvicorn ExpenseManagement.main:app --reload --port 8004
-- Health utilities:
-  - python smoke_test.py  # import + OpenAPI
-  - python live_check.py  # starts each on 8001–8004 and probes /openapi.json
+- Health: `python smoke_test.py` (checks imports + OpenAPI)
 
 ## Auth (8001)
 - POST /signup
@@ -43,9 +41,8 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 - POST /groups
 - PUT /groups/{group_id}
 - DELETE /groups/{group_id}
-- GET /groups/mine
-- GET /group/list
-- GET /group/list-paged
+- GET /groups
+- GET /groups/paged
 - GET /groups/{group_id}/members
 - POST /groups/{group_id}/invites
 - GET /groups/{group_id}/invites (owner-only)
@@ -55,9 +52,12 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 - DELETE /groups/{group_id}/members/{user_id}
 - GET /groups/{group_id}/audit-log (stub)
 - GET /groups/search
+- POST /contacts/import (10-digit phones)
+- GET /users/lookup?phone= (accepts 10-digit or +91 + 10-digit)
+- POST /groups/{group_id}/members/by-phone
 
 ## Expenses (8004)
-- POST /groups/{group_id}/expenses
+- POST /groups/{group_id}/expenses  (body: { description, amount })
 - GET /expenses/{expense_id}
 - PATCH /expenses/{expense_id}
 - DELETE /expenses/{expense_id}
@@ -77,6 +77,10 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 - GET /categories
 - GET /reports/groups/{group_id}/summary
 - GET /reports/groups/{group_id}/summary.csv
+- GET /reports/groups/{group_id}/summary.pdf
+- GET /reports/users/{user_id}/monthly?month=
+- GET /reports/users/{user_id}/summary.csv
+- GET /reports/users/{user_id}/summary.pdf
 
 ## Deploying to Railway
 - For each service folder (UserAuthentication, UserAuthorisation, UserGroupManagement, ExpenseManagement):
@@ -102,4 +106,5 @@ FastAPI microservices for auth, authorization, groups, and expenses.
 ## Notes
 - JWT: Authorization: Bearer <token> across services.
 - Supabase: local authz checks in 8003/8004; 8002 provides helper checks.
-- Attachments are metadata-only; swap for storage integration later.
+- Group phones are 10-digit only; lookups accept 10-digit and +91 variants.
+- Expense create only needs `description` and `amount`; defaults set server-side and schema mismatches handled gracefully.

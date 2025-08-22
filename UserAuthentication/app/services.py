@@ -6,7 +6,14 @@ password reset request/confirm. Uses Supabase as the data store.
 
 # This logic imports utilities and models
 from app.utils import supabase, hash_password, verify_password
-from app.models import UserCreate, UserLogin, EmailVerification, PasswordResetRequest, PasswordReset, UserProfileUpdate
+from app.models import (
+    UserCreate,
+    UserLogin,
+    EmailVerification,
+    PasswordResetRequest,
+    PasswordReset,
+    UserProfileUpdate,
+)
 from fastapi import HTTPException
 import uuid
 import datetime

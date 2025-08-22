@@ -3,17 +3,10 @@ from typing import Optional, List, Literal
 from datetime import datetime
 
 
-# This model validates expense creation input
-class ExpenseCreate(BaseModel):
-    group_id: str
-    created_by: str
+# Minimal request payload for creating an expense via path group_id
+class ExpenseCreateRequest(BaseModel):
     description: str
     amount: float
-    currency: Optional[str] = Field(default="USD")
-    date: Optional[datetime] = None
-    paid_by: Optional[str] = None
-    category: Optional[str] = None
-    notes: Optional[str] = None
 
 
 # This model validates expense split input
